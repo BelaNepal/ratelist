@@ -12,15 +12,11 @@ import {
   UserSession
 } from '../types';
 
-// Production: use Render backend URL directly.
-// Local dev: Vite's proxy forwards '/api' to localhost:5000.
-const RENDER_BACKEND = 'https://ratelist-cd57.onrender.com';
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : import.meta.env.PROD
-    ? `${RENDER_BACKEND}/api`
-    : '/api';
+// Production (Vercel → Render): full absolute URL.
+// Local dev: Vite proxy forwards '/api' to localhost:5000.
+const API_BASE: string = import.meta.env.PROD
+  ? 'https://ratelist-cd57.onrender.com/api'
+  : '/api';
 
 export async function loginUserApi(email: string, password: string): Promise<{ success: boolean; user?: UserProfile; token?: string; error?: string; message?: string }> {
   const res = await fetch(`${API_BASE}/auth/login`, {
