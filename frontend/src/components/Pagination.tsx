@@ -54,22 +54,22 @@ export const Pagination: React.FC<PaginationProps> = ({
   };
 
   return (
-    <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl ${className}`}>
+    <div className={`flex flex-col sm:flex-row items-center justify-between gap-2 py-1 px-3 border-t border-slate-100 bg-slate-50/50 rounded-xl ${className}`}>
       {/* Items Counter & Page Size Selector */}
-      <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
+      <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
         <span>
-          Showing <strong className="text-slate-900 font-bold">{startItem}</strong> to{' '}
+          Showing <strong className="text-slate-900 font-bold">{startItem}</strong>-
           <strong className="text-slate-900 font-bold">{endItem}</strong> of{' '}
           <strong className="text-slate-900 font-bold">{totalItems}</strong> entries
         </span>
 
         {onPageSizeChange && (
-          <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200">
+          <div className="flex items-center gap-1 pl-2 border-l border-slate-200">
             <span>Per page:</span>
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+              className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-slate-700 outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
             >
               {pageSizeOptions.map((option) => (
                 <option key={option} value={option}>
@@ -87,39 +87,39 @@ export const Pagination: React.FC<PaginationProps> = ({
         <button
           onClick={() => onPageChange(1)}
           disabled={safePage === 1}
-          className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          className="p-1 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
           title="First Page"
         >
-          <ChevronsLeft className="h-4 w-4" />
+          <ChevronsLeft className="h-3.5 w-3.5" />
         </button>
 
         {/* Previous Page */}
         <button
           onClick={() => onPageChange(safePage - 1)}
           disabled={safePage === 1}
-          className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          className="p-1 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
           title="Previous Page"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-3.5 w-3.5" />
         </button>
 
         {/* Page Number Buttons */}
-        <div className="flex items-center gap-1 px-1">
+        <div className="flex items-center gap-0.5 px-0.5">
           {getPageNumbers().map((num, idx) =>
             typeof num === 'number' ? (
               <button
                 key={idx}
                 onClick={() => onPageChange(num)}
-                className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-bold transition-all ${
+                className={`h-6 min-w-[22px] px-1.5 rounded text-[11px] font-bold transition-all ${
                   safePage === num
-                    ? 'bg-blue-600 text-white shadow-sm'
+                    ? 'bg-blue-600 text-white shadow-xs'
                     : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 {num}
               </button>
             ) : (
-              <span key={idx} className="px-1 text-xs text-slate-400 font-bold">
+              <span key={idx} className="px-0.5 text-[11px] text-slate-400 font-bold">
                 {num}
               </span>
             )
@@ -130,22 +130,23 @@ export const Pagination: React.FC<PaginationProps> = ({
         <button
           onClick={() => onPageChange(safePage + 1)}
           disabled={safePage === totalPages}
-          className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          className="p-1 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
           title="Next Page"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </button>
 
         {/* Last Page */}
         <button
           onClick={() => onPageChange(totalPages)}
           disabled={safePage === totalPages}
-          className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+          className="p-1 rounded border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition-colors"
           title="Last Page"
         >
-          <ChevronsRight className="h-4 w-4" />
+          <ChevronsRight className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
   );
+
 };

@@ -25,8 +25,15 @@ import {
   getQuotations,
   getQuotationById,
   getSuppliers,
-  getReportsTrend
+  getReportsTrend,
+  getCategories,
+  createCategory,
+  deleteCategory,
+  getSchemaColumns,
+  createSchemaColumn,
+  deleteSchemaColumn
 } from './controllers/apiController';
+
 
 import {
   login,
@@ -208,23 +215,47 @@ app.delete('/api/suppliers/rates/:rateId', verifyAuth, requireRole('Admin', 'Rat
 
 app.get('/api/reports/trends', getReportsTrend);
 
+// Category & Column Schema Persistence Routes
+app.get('/api/categories', getCategories);
+app.post('/api/categories', createCategory);
+app.delete('/api/categories/:id', deleteCategory);
+
+app.get('/api/schema-columns', getSchemaColumns);
+app.post('/api/schema-columns', createSchemaColumn);
+app.delete('/api/schema-columns/:id', deleteSchemaColumn);
+
 app.get('/api/health', (req, res) => {
+
   res.json({ status: 'OK', message: 'Bela Rate & Costing Manager Backend is running' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Bela Rate Backend listening on http://localhost:${PORT}`);
-  // Initialize Database Users, Sessions, BOM, Role Permissions, Supplier, and Projects tables
-  initializeUserDatabaseTables();
-  initializeBOMDatabaseTables();
-  initializeRolePermissionsTable();
-  initializeSupplierDatabaseTables();
-  initializeProjectDatabaseTables();
+const startServer = (desiredPort: number) => {
+  const server = app.listen(desiredPort, () => {
+    console.log(`🚀 Bela Rate Backend listening on http://localhost:${desiredPort}`);
+    // Initialize Database Users, Sessions, BOM, Role Permissions, Supplier, and Projects tables
+    initializeUserDatabaseTables();
+    initializeBOMDatabaseTables();
+    initializeRolePermissionsTable();
+    initializeSupplierDatabaseTables();
+    initializeProjectDatabaseTables();
 
-  // Initial background sync from live Bela EcoPanels API
-  fetchLiveBelaApiProducts().then((prods) => {
-    console.log(`✅ Initially synced ${prods.length} live products from https://belaecopanels.com/api/products`);
+    // Initial background sync from live Bela EcoPanels API
+    fetchLiveBelaApiProducts().then((prods) => {
+      console.log(`✅ Initially synced ${prods.length} live products from https://belaecopanels.com/api/products`);
+    });
   });
-});
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`⚠️ Port ${desiredPort} is in use (EADDRINUSE). Automatically trying port ${desiredPort + 1}...`);
+      startServer(desiredPort + 1);
+    } else {
+      console.error('Server listen error:', err);
+    }
+  });
+};
+
+startServer(Number(process.env.PORT) || 5000);
+
 
 

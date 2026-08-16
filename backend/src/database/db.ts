@@ -164,7 +164,46 @@ export interface Quotation {
   created_at: string;
 }
 
+export interface Category {
+
+  id: string;
+  name: string;
+  code: string;
+  status: 'Active' | 'Inactive';
+  vatRate: number;
+  isDefault?: boolean;
+}
+
+export interface ColumnSchema {
+  id: string;
+  table_id: string;
+  key: string;
+  label: string;
+  type: string;
+  access_role: string;
+  visible: boolean;
+  required: boolean;
+  description: string;
+  is_custom?: boolean;
+}
+
 class InMemoryDatabase {
+  public categories: Category[] = [
+    { id: 'cat_1', name: 'Eco Panels', code: 'ECO', status: 'Active', vatRate: 13, isDefault: true },
+    { id: 'cat_2', name: 'Modular Components', code: 'MOD', status: 'Active', vatRate: 13, isDefault: false },
+    { id: 'cat_3', name: 'Accessories', code: 'ACC', status: 'Active', vatRate: 13, isDefault: false },
+    { id: 'cat_4', name: 'Services', code: 'SRV', status: 'Active', vatRate: 13, isDefault: false },
+    { id: 'cat_5', name: 'Raw Materials', code: 'RAW', status: 'Active', vatRate: 13, isDefault: false }
+  ];
+
+  public column_schemas: ColumnSchema[] = [
+    { id: 'col_1', table_id: 'products', key: 'code', label: 'Item Code', type: 'VARCHAR', access_role: 'All Roles', visible: true, required: true, description: 'Unique product code identifier (e.g. EP-075)' },
+    { id: 'col_2', table_id: 'products', key: 'name', label: 'Product Name', type: 'VARCHAR', access_role: 'All Roles', visible: true, required: true, description: 'Full descriptive title of panel or material' },
+    { id: 'col_3', table_id: 'products', key: 'current_rate', label: 'Current Approved Rate', type: 'DECIMAL', access_role: 'Rate Manager & Admin', visible: true, required: true, description: 'Active price per unit in NPR' },
+    { id: 'col_4', table_id: 'products', key: 'thickness', label: 'Panel Thickness', type: 'VARCHAR', access_role: 'All Roles', visible: true, required: false, description: 'EPS core thickness in mm' }
+  ];
+
+
   public products: Product[] = [
     {
       id: 'prod_eps_50',

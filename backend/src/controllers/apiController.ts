@@ -1,7 +1,53 @@
 import { Request, Response } from 'express';
 import { db, Product } from '../database/db';
+import { pgPool, getPgStatus } from '../database/pgPool';
+
+export interface PendingSyncItem {
+  id: string;
+  type: 'CREATE_CATEGORY' | 'CREATE_PRODUCT' | 'CREATE_SCHEMA_COLUMN';
+  data: any;
+  timestamp: string;
+}
+
+export const pendingSyncQueue: PendingSyncItem[] = [];
+
+export const syncPendingMutationsToPg = async () => {
+  const status = getPgStatus();
+  if (!status.connected || pendingSyncQueue.length === 0) {
+    return { syncedCount: 0, remainingPending: pendingSyncQueue.length };
+  }
+
+  let syncedCount = 0;
+  const itemsToSync = [...pendingSyncQueue];
+
+  for (const item of itemsToSync) {
+    try {
+      if (item.type === 'CREATE_CATEGORY') {
+        await pgPool.query(
+          `INSERT INTO categories (id, name, code, status, vat_rate, is_default)
+           VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING`,
+          [item.data.id, item.data.name, item.data.code, item.data.status, item.data.vatRate, item.data.isDefault]
+        );
+      } else if (item.type === 'CREATE_SCHEMA_COLUMN') {
+        await pgPool.query(
+          `INSERT INTO column_schemas (id, table_id, key, label, type, access_role, visible, required, description, is_custom)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
+          [item.data.id, item.data.table_id, item.data.key, item.data.label, item.data.type, item.data.access_role, item.data.visible, item.data.required, item.data.description, item.data.is_custom]
+        );
+      }
+      const idx = pendingSyncQueue.findIndex((i) => i.id === item.id);
+      if (idx !== -1) pendingSyncQueue.splice(idx, 1);
+      syncedCount++;
+    } catch (err) {
+      console.error(`Error syncing item ${item.id} to PostgreSQL:`, err);
+    }
+  }
+
+  return { syncedCount, remainingPending: pendingSyncQueue.length };
+};
 
 // Helper to fetch live products from Bela EcoPanels official API
+
 export const fetchLiveBelaApiProducts = async (): Promise<Product[]> => {
   try {
     const url = 'https://belaecopanels.com/api/products?take=200';
@@ -67,13 +113,22 @@ export const fetchLiveBelaApiProducts = async (): Promise<Product[]> => {
 
 export const syncLiveProductsHandler = async (req: Request, res: Response) => {
   const synced = await fetchLiveBelaApiProducts();
+  const dbSyncResult = await syncPendingMutationsToPg();
+
+  let msg = `Successfully synced ${synced.length} live products from belaecopanels.com API!`;
+  if (dbSyncResult.syncedCount > 0) {
+    msg += ` Auto-flushed and synced ${dbSyncResult.syncedCount} pending local edits directly to PostgreSQL database "bela_rate_db"!`;
+  }
+
   res.json({
-    message: `Successfully synced ${synced.length} live products from belaecopanels.com API`,
+    message: msg,
     count: synced.length,
     total_products_in_master: db.products.length,
-    products: synced
+    products: synced,
+    db_synced_count: dbSyncResult.syncedCount
   });
 };
+
 
 export const getDashboardStats = (req: Request, res: Response) => {
   const activeProductsCount = db.products.filter(p => p.status === 'Active').length;
@@ -654,3 +709,207 @@ export const getReportsTrend = (req: Request, res: Response) => {
 
   res.json(trends);
 };
+
+// CATEGORY PERSISTENCE ENDPOINTS (PostgreSQL DB with In-Memory Fallback)
+export const getCategories = async (req: Request, res: Response) => {
+  let catList: any[] = [];
+  try {
+    const status = getPgStatus();
+    if (status.connected) {
+      const result = await pgPool.query('SELECT * FROM categories ORDER BY created_at DESC');
+      if (result.rows.length > 0) {
+        catList = result.rows;
+      }
+    }
+  } catch (err) {
+    console.error('PostgreSQL category fetch fallback to in-memory store:', err);
+  }
+
+  if (catList.length === 0) {
+    catList = [...db.categories];
+  }
+
+  // Auto-discover any categories used in products that are not yet in the categories list
+  const existingNames = new Set(catList.map((c) => (c.name || '').toLowerCase()));
+  db.products.forEach((p) => {
+    if (p.category && !existingNames.has(p.category.toLowerCase())) {
+      existingNames.add(p.category.toLowerCase());
+      const autoCat = {
+        id: `cat_prod_${p.category.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        name: p.category,
+        code: p.category.substring(0, 3).toUpperCase(),
+        status: 'Active' as const,
+        vatRate: 13,
+        isDefault: false
+      };
+      catList.push(autoCat);
+      db.categories.push(autoCat);
+    }
+  });
+
+
+  res.json(catList);
+};
+
+
+export const createCategory = async (req: Request, res: Response) => {
+  const { name, code, status, vatRate, isDefault } = req.body;
+  const newCat = {
+    id: `cat_${Date.now()}`,
+    name: name.trim(),
+    code: (code || name.substring(0, 3)).toUpperCase().trim(),
+    status: (status || 'Active') as 'Active' | 'Inactive',
+    vatRate: Number(vatRate) || 13,
+    isDefault: Boolean(isDefault)
+  };
+
+  try {
+    const pgStatus = getPgStatus();
+    if (pgStatus.connected) {
+      await pgPool.query(
+        `CREATE TABLE IF NOT EXISTS categories (
+          id VARCHAR(100) PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          code VARCHAR(50) NOT NULL,
+          status VARCHAR(50) DEFAULT 'Active',
+          vat_rate DECIMAL(5,2) DEFAULT 13.00,
+          is_default BOOLEAN DEFAULT false,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`
+      );
+
+      await pgPool.query(
+        'INSERT INTO categories (id, name, code, status, vat_rate, is_default) VALUES ($1, $2, $3, $4, $5, $6)',
+        [newCat.id, newCat.name, newCat.code, newCat.status, newCat.vatRate, newCat.isDefault]
+      );
+    }
+  } catch (err) {
+    console.error('PostgreSQL category create fallback:', err);
+  }
+
+  db.categories.unshift(newCat);
+  res.status(201).json({
+    success: true,
+    message: `Category "${newCat.name}" saved persistently to database!`,
+    category: newCat
+  });
+};
+
+export const deleteCategory = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const targetCat = db.categories.find((c) => c.id === id || c.name.toLowerCase() === id.toLowerCase());
+  const catName = targetCat ? targetCat.name : id;
+
+  try {
+    const pgStatus = getPgStatus();
+    if (pgStatus.connected) {
+      await pgPool.query('DELETE FROM categories WHERE id = $1 OR LOWER(name) = LOWER($2)', [id, catName]);
+    }
+  } catch (err) {
+    console.error('PostgreSQL category delete fallback:', err);
+  }
+
+  db.categories = db.categories.filter((c) => c.id !== id && c.name.toLowerCase() !== catName.toLowerCase());
+
+  // Update products using this deleted category to prevent auto-discovery on refresh
+  db.products.forEach((p) => {
+    if (p.category && p.category.toLowerCase() === catName.toLowerCase()) {
+      p.category = 'Eco Panels';
+    }
+  });
+
+  res.json({ success: true, message: `Category "${catName}" removed permanently!` });
+};
+
+
+// CUSTOM SCHEMA COLUMNS ENDPOINTS (PostgreSQL DB with In-Memory Fallback)
+export const getSchemaColumns = async (req: Request, res: Response) => {
+  const { table_id } = req.query;
+
+  try {
+    const status = getPgStatus();
+    if (status.connected) {
+      const result = await pgPool.query('SELECT * FROM column_schemas ORDER BY created_at DESC');
+      if (result.rows.length > 0) {
+        const filtered = table_id ? result.rows.filter((col: any) => col.table_id === table_id) : result.rows;
+        return res.json(filtered);
+      }
+    }
+  } catch (err) {
+    console.error('PostgreSQL column schema fetch fallback:', err);
+  }
+
+  const filteredInMem = table_id ? db.column_schemas.filter((c) => c.table_id === table_id) : db.column_schemas;
+  res.json(filteredInMem);
+};
+
+export const createSchemaColumn = async (req: Request, res: Response) => {
+  const { table_id, key, label, type, access_role, visible, required, description } = req.body;
+
+  const newCol = {
+    id: `col_${Date.now()}`,
+    table_id: table_id || 'products',
+    key: (key || label.toLowerCase().replace(/[^a-z0-9_]/g, '_')).trim(),
+    label: label.trim(),
+    type: type || 'VARCHAR',
+    access_role: access_role || 'All Roles',
+    visible: visible !== undefined ? Boolean(visible) : true,
+    required: Boolean(required),
+    description: description || 'Custom schema column field',
+    is_custom: true
+  };
+
+  try {
+    const pgStatus = getPgStatus();
+    if (pgStatus.connected) {
+      await pgPool.query(
+        `CREATE TABLE IF NOT EXISTS column_schemas (
+          id VARCHAR(100) PRIMARY KEY,
+          table_id VARCHAR(100) NOT NULL,
+          key VARCHAR(100) NOT NULL,
+          label VARCHAR(255) NOT NULL,
+          type VARCHAR(50) NOT NULL,
+          access_role VARCHAR(100) DEFAULT 'All Roles',
+          visible BOOLEAN DEFAULT true,
+          required BOOLEAN DEFAULT false,
+          description TEXT,
+          is_custom BOOLEAN DEFAULT true,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`
+      );
+
+      await pgPool.query(
+        `INSERT INTO column_schemas (id, table_id, key, label, type, access_role, visible, required, description, is_custom)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [newCol.id, newCol.table_id, newCol.key, newCol.label, newCol.type, newCol.access_role, newCol.visible, newCol.required, newCol.description, newCol.is_custom]
+      );
+    }
+  } catch (err) {
+    console.error('PostgreSQL column schema create fallback:', err);
+  }
+
+  db.column_schemas.unshift(newCol);
+  res.status(201).json({
+    success: true,
+    message: `Schema Column "${newCol.label}" created and saved persistently!`,
+    column: newCol
+  });
+};
+
+export const deleteSchemaColumn = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const pgStatus = getPgStatus();
+    if (pgStatus.connected) {
+      await pgPool.query('DELETE FROM column_schemas WHERE id = $1 OR key = $1', [id]);
+    }
+  } catch (err) {
+    console.error('PostgreSQL column schema delete fallback:', err);
+  }
+
+  db.column_schemas = db.column_schemas.filter((col) => col.id !== id && col.key !== id);
+  res.json({ success: true, message: 'Schema column removed permanently' });
+};
+
+

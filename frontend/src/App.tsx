@@ -16,7 +16,8 @@ import { Quotations } from './pages/Quotations';
 import { ApprovalWorkflow } from './pages/ApprovalWorkflow';
 import { Suppliers } from './pages/Suppliers';
 import { Reports } from './pages/Reports';
-import { AIDocsViewer } from './pages/AIDocsViewer';
+import { Documentation } from './pages/Documentation';
+
 import { CategorySettings } from './pages/CategorySettings';
 import { TrashBinPage } from './pages/TrashBin';
 import { LoginPage } from './pages/LoginPage';
@@ -174,7 +175,8 @@ export const AppContent: React.FC = () => {
 
               {activeTab === 'trash' && <TrashBinPage />}
 
-              {activeTab === 'docs' && <AIDocsViewer />}
+              {activeTab === 'docs' && <Documentation />}
+
             </>
           )}
         </main>

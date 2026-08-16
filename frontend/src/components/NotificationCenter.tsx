@@ -176,7 +176,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onNaviga
 
       {/* Popover Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl border border-slate-200 bg-white shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-left">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl border border-slate-200 bg-white shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-left">
+
           
           {/* Header */}
           <div className="bg-slate-900 p-4 text-white flex items-center justify-between">

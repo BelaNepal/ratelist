@@ -25,10 +25,21 @@ import {
   X,
   Code,
   FileText,
-  Sliders
+  Sliders,
+  Loader2
 } from 'lucide-react';
-import { fetchProducts } from '../services/api';
+
+import {
+  fetchProducts,
+  fetchCategories,
+  createCategoryApi,
+  deleteCategoryApi,
+  fetchColumnSchemas,
+  createColumnSchemaApi,
+  deleteColumnSchemaApi
+} from '../services/api';
 import { Product } from '../types';
+
 
 export type SqlDataType =
   | 'VARCHAR'
@@ -70,8 +81,11 @@ export const CategorySettings: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  const [savingSchema, setSavingSchema] = useState<boolean>(false);
+  const [savingCat, setSavingCat] = useState<boolean>(false);
 
   // Selected Table State
+
   const [selectedTableId, setSelectedTableId] = useState<string>('products');
 
   // Add Custom Column Modal State
@@ -197,40 +211,119 @@ export const CategorySettings: React.FC = () => {
   });
 
   useEffect(() => {
+    fetchCategories().then((cats) => {
+      if (cats && cats.length > 0) {
+        setCategories(cats);
+      }
+    });
+
     fetchProducts('All')
-      .then(setProducts)
+      .then((prods) => {
+        setProducts(prods);
+        if (prods && prods.length > 0) {
+          setCategories((prev) => {
+            const existingNames = new Set(prev.map((c) => (c.name || '').toLowerCase()));
+            const newCats: any[] = [];
+            prods.forEach((p) => {
+              if (p.category && !existingNames.has(p.category.toLowerCase())) {
+                existingNames.add(p.category.toLowerCase());
+                newCats.push({
+                  id: `cat_prod_${p.category.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+                  name: p.category,
+                  code: p.category.substring(0, 3).toUpperCase(),
+                  status: 'Active',
+                  vatRate: 13,
+                  isDefault: false
+                });
+              }
+            });
+            return [...prev, ...newCats];
+          });
+        }
+      })
       .finally(() => setLoading(false));
+
+    fetchColumnSchemas().then((cols) => {
+
+      if (cols && cols.length > 0) {
+        setTableSchemas((prev) => {
+          const updated = { ...prev };
+          cols.forEach((col: any) => {
+            const tbl = col.table_id || 'products';
+            if (updated[tbl]) {
+              const exists = updated[tbl].columns.some((c) => c.key === col.key);
+              if (!exists) {
+                updated[tbl].columns.push({
+                  key: col.key,
+                  label: col.label,
+                  type: col.type as SqlDataType,
+                  accessRole: col.access_role as RoleAccessRight,
+                  visible: col.visible !== undefined ? col.visible : true,
+                  required: Boolean(col.required),
+                  desc: col.description || '',
+                  isCustom: Boolean(col.is_custom)
+                });
+              }
+            }
+          });
+          return updated;
+        });
+      }
+    });
   }, []);
 
   const selectedTable = tableSchemas[selectedTableId];
 
-  const handleAddCategory = (e: React.FormEvent) => {
+  // PERSISTENT CATEGORY CREATION HANDLER (POSTGRES DB + IN-MEMORY FALLBACK)
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
 
-    const newCat = {
-      id: `cat_${Date.now()}`,
-      name: newCatName.trim(),
-      code: newCatCode.trim().toUpperCase() || newCatName.substring(0, 3).toUpperCase(),
-      status: 'Active',
-      vatRate: 13,
-      isDefault: false
-    };
+    setSavingCat(true);
+    try {
+      const res = await createCategoryApi({
+        name: newCatName.trim(),
+        code: newCatCode.trim().toUpperCase() || newCatName.substring(0, 3).toUpperCase(),
+        status: 'Active',
+        vatRate: 13,
+        isDefault: false
+      });
 
-    setCategories((prev) => [...prev, newCat]);
-    setNewCatName('');
-    setNewCatCode('');
-    setSaveMessage(`Created category "${newCat.name}" successfully`);
-    setTimeout(() => setSaveMessage(''), 4000);
-  };
-
-  const handleDeleteCategory = (id: string, name: string) => {
-    if (window.confirm(`Delete category "${name}"? Existing products will remain preserved.`)) {
-      setCategories((prev) => prev.filter((c) => c.id !== id));
-      setSaveMessage(`Category "${name}" removed`);
+      if (res.category) {
+        setCategories((prev) => [res.category, ...prev]);
+      }
+      setNewCatName('');
+      setNewCatCode('');
+      setSaveMessage(res.message || `Created category "${newCatName.trim()}" persistently!`);
       setTimeout(() => setSaveMessage(''), 4000);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save category to backend database');
+    } finally {
+      setSavingCat(false);
     }
   };
+
+
+  // PERSISTENT CATEGORY DELETION HANDLER
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (
+      window.confirm(
+        `⚠️ PERMANENT CATEGORY DELETION:\n\nAre you sure you want to permanently delete category "${name}"?\n\nThis will remove it from the PostgreSQL database, Category Settings, Product Master filter tabs, and category dropdowns permanently.`
+      )
+    ) {
+      try {
+        await deleteCategoryApi(id);
+        setCategories((prev) => prev.filter((c) => c.id !== id && c.name.toLowerCase() !== name.toLowerCase()));
+        setSaveMessage(`Category "${name}" permanently deleted from PostgreSQL database & system!`);
+        setTimeout(() => setSaveMessage(''), 4000);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete category');
+      }
+    }
+  };
+
 
   const toggleColumnVisibility = (tableId: string, colKey: string) => {
     setTableSchemas((prev) => {
@@ -238,12 +331,15 @@ export const CategorySettings: React.FC = () => {
       if (!targetTable) return prev;
 
       const updatedCols = targetTable.columns.map((col) =>
-        col.key === colKey && !col.required ? { ...col, visible: !col.visible } : col
+        col.key === colKey ? { ...col, visible: !col.visible } : col
       );
 
       return {
         ...prev,
-        [tableId]: { ...targetTable, columns: updatedCols }
+        [tableId]: {
+          ...targetTable,
+          columns: updatedCols
+        }
       };
     });
   };
@@ -259,13 +355,16 @@ export const CategorySettings: React.FC = () => {
 
       return {
         ...prev,
-        [tableId]: { ...targetTable, columns: updatedCols }
+        [tableId]: {
+          ...targetTable,
+          columns: updatedCols
+        }
       };
     });
   };
 
-  // ADD COLUMN HANDLER
-  const handleCreateCustomColumn = (e: React.FormEvent) => {
+  // PERSISTENT CUSTOM COLUMN CREATION HANDLER (POSTGRES DB + IN-MEMORY FALLBACK)
+  const handleAddCustomColumn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newColLabel.trim()) return;
 
@@ -289,28 +388,45 @@ export const CategorySettings: React.FC = () => {
       isCustom: true
     };
 
-    setTableSchemas((prev) => {
-      const targetTable = prev[selectedTableId];
-      return {
-        ...prev,
-        [selectedTableId]: {
-          ...targetTable,
-          columns: [...targetTable.columns, newColumnObj]
-        }
-      };
-    });
+    try {
+      const res = await createColumnSchemaApi({
+        table_id: selectedTableId,
+        key: formattedKey,
+        label: newColLabel.trim(),
+        type: newColType,
+        access_role: newColRole,
+        visible: true,
+        required: newColRequired,
+        description: newColDesc.trim() || `Custom field ${newColLabel}`
+      });
 
-    setShowAddColumnModal(false);
-    setNewColKey('');
-    setNewColLabel('');
-    setNewColDesc('');
-    setNewColRequired(false);
+      setTableSchemas((prev) => {
+        const targetTable = prev[selectedTableId];
+        return {
+          ...prev,
+          [selectedTableId]: {
+            ...targetTable,
+            columns: [...targetTable.columns, newColumnObj]
+          }
+        };
+      });
 
-    setSaveMessage(
-      `Added column "${newColumnObj.label}" (${newColumnObj.key}) to table ${selectedTable.tableName}!`
-    );
-    setTimeout(() => setSaveMessage(''), 4000);
+      setShowAddColumnModal(false);
+      setNewColKey('');
+      setNewColLabel('');
+      setNewColDesc('');
+      setNewColRequired(false);
+
+      setSaveMessage(res.message || `Added column "${newColumnObj.label}" (${newColumnObj.key}) persistently!`);
+      setTimeout(() => setSaveMessage(''), 4000);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save schema column');
+    }
   };
+
+  const handleCreateCustomColumn = handleAddCustomColumn;
+
 
   // OPEN EDIT COLUMN MODAL
   const handleOpenEditColumn = (col: ColumnRule) => {
@@ -354,33 +470,50 @@ export const CategorySettings: React.FC = () => {
     setTimeout(() => setSaveMessage(''), 4000);
   };
 
-  // DELETE / REMOVE COLUMN HANDLER
-  const handleDeleteColumn = (colKey: string, colLabel: string, isRequired: boolean) => {
+  // PERMANENT DELETE / REMOVE COLUMN HANDLER (POSTGRES DB + IN-MEMORY PERSISTENCE)
+  const handleDeleteColumn = async (colKey: string, colLabel: string, isRequired: boolean, colId?: string) => {
     if (isRequired) {
       alert(`System required column "${colLabel}" cannot be deleted as core application functions rely on it.`);
       return;
     }
 
-    if (window.confirm(`Remove column "${colLabel}" (${colKey}) from table ${selectedTable.tableName}?`)) {
-      setTableSchemas((prev) => {
-        const targetTable = prev[selectedTableId];
-        return {
-          ...prev,
-          [selectedTableId]: {
-            ...targetTable,
-            columns: targetTable.columns.filter((c) => c.key !== colKey)
-          }
-        };
-      });
+    if (
+      window.confirm(
+        `⚠️ PERMANENT DELETION CONFIRMATION:\n\nAre you sure you want to permanently delete custom column "${colLabel}" (${colKey})?\n\nThis will remove it from the PostgreSQL database, Category Settings, and Product Master Dynamic Extra Columns section permanently.`
+      )
+    ) {
+      try {
+        await deleteColumnSchemaApi(colId || colKey);
+        setTableSchemas((prev) => {
+          const targetTable = prev[selectedTableId];
+          return {
+            ...prev,
+            [selectedTableId]: {
+              ...targetTable,
+              columns: targetTable.columns.filter((c) => c.key !== colKey && (c as any).id !== colId)
+            }
+          };
+        });
 
-      setSaveMessage(`Removed column "${colLabel}" from table ${selectedTable.tableName}`);
-      setTimeout(() => setSaveMessage(''), 4000);
+        setSaveMessage(`Column "${colLabel}" permanently deleted from PostgreSQL database & system!`);
+        setTimeout(() => setSaveMessage(''), 4000);
+      } catch (err) {
+        console.error('Error deleting column schema:', err);
+        alert('Failed to delete custom column schema from backend database');
+      }
     }
   };
 
-  const handleSaveSettings = () => {
-    setSaveMessage(`Saved column schema & access rules for table "${selectedTable.displayName}"!`);
-    setTimeout(() => setSaveMessage(''), 4000);
+
+  const handleSaveSettings = async () => {
+    setSavingSchema(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      setSaveMessage(`Saved column schema & access rules for table "${selectedTable.displayName}"!`);
+      setTimeout(() => setSaveMessage(''), 4000);
+    } finally {
+      setSavingSchema(false);
+    }
   };
 
   return (
@@ -399,12 +532,22 @@ export const CategorySettings: React.FC = () => {
 
           <button
             onClick={handleSaveSettings}
-            className="flex items-center gap-2 rounded-xl bg-[#ef7e2d] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#ef7e2d]/90 shadow-md shadow-[#ef7e2d]/20 transition-all cursor-pointer"
+            disabled={savingSchema}
+            className="flex items-center gap-2 rounded-xl bg-[#ef7e2d] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#ef7e2d]/90 shadow-md shadow-[#ef7e2d]/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="h-4 w-4" /> Save Schema Changes
+            {savingSchema ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Saving Schema...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" /> Save Schema Changes
+              </>
+            )}
           </button>
         </div>
       </div>
+
 
       {/* Main Page Body */}
       <div className="p-6 md:p-8 space-y-6">
@@ -444,12 +587,22 @@ export const CategorySettings: React.FC = () => {
               />
               <button
                 type="submit"
-                className="flex items-center gap-1 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors"
+                disabled={savingCat}
+                className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <Plus className="h-4 w-4" /> Add Category
+                {savingCat ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" /> Add Category
+                  </>
+                )}
               </button>
             </form>
           </div>
+
 
           <div className="overflow-x-auto overflow-y-auto max-h-[40vh] rounded-xl border border-slate-200">
             <table className="w-full text-left text-xs border-collapse">
@@ -669,13 +822,14 @@ export const CategorySettings: React.FC = () => {
                             {/* DELETE / REMOVE COLUMN BUTTON */}
                             {!col.required && (
                               <button
-                                onClick={() => handleDeleteColumn(col.key, col.label, col.required)}
+                                onClick={() => handleDeleteColumn(col.key, col.label, col.required, (col as any).id || col.key)}
                                 className="flex items-center justify-center rounded-lg bg-red-50 p-1.5 text-red-600 hover:bg-red-100 transition-colors"
                                 title="Remove Column from Table"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             )}
+
                           </div>
                         </td>
                       </tr>

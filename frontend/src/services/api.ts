@@ -165,6 +165,52 @@ export async function submitRateChange(product_id: string, new_rate: number, rea
   return res.json();
 }
 
+// CATEGORIES PERSISTENCE API
+export async function fetchCategories(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/categories`);
+  return res.json();
+}
+
+export async function createCategoryApi(categoryData: any): Promise<{ success: boolean; message: string; category: any }> {
+  const res = await fetch(`${API_BASE}/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(categoryData)
+  });
+  return res.json();
+}
+
+export async function deleteCategoryApi(id: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/categories/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+}
+
+// COLUMN SCHEMAS PERSISTENCE API
+export async function fetchColumnSchemas(table_id?: string): Promise<any[]> {
+  const url = table_id ? `${API_BASE}/schema-columns?table_id=${encodeURIComponent(table_id)}` : `${API_BASE}/schema-columns`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+export async function createColumnSchemaApi(columnData: any): Promise<{ success: boolean; message: string; column: any }> {
+  const res = await fetch(`${API_BASE}/schema-columns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(columnData)
+  });
+  return res.json();
+}
+
+export async function deleteColumnSchemaApi(id: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/schema-columns/${id}`, {
+    method: 'DELETE'
+  });
+  return res.json();
+}
+
+
 export async function fetchApprovalRequests(): Promise<RateChangeRequest[]> {
   const res = await fetch(`${API_BASE}/approval-requests`);
   return res.json();

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, PlusCircle, Upload, Image as ImageIcon, FolderPlus, CheckCircle2 } from 'lucide-react';
-import { createProduct, uploadProductImageFile } from '../services/api';
+import { createProduct, uploadProductImageFile, createCategoryApi, fetchCategories } from '../services/api';
 
 interface AddProductModalProps {
   onClose: () => void;
@@ -20,6 +20,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onClose, onAdd
   const [size, setSize] = useState('1200 × 2400 mm');
   const [brand, setBrand] = useState('Bela EcoPanel');
   const [currentRate, setCurrentRate] = useState('');
+  const [fetchedCategoryNames, setFetchedCategoryNames] = useState<string[]>([]);
   
   // Image Upload State
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -27,13 +28,22 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onClose, onAdd
   const [uploading, setUploading] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    fetchCategories().then((cats) => {
+      if (cats && Array.isArray(cats)) {
+        setFetchedCategoryNames(cats.map((c: any) => c.name));
+      }
+    });
+  }, []);
+
   const defaultCategoryList = Array.from(new Set([
     'Eco Panels',
     'Modular Components',
     'Accessories',
     'Services',
     'Raw Materials',
-    ...existingCategories
+    ...existingCategories,
+    ...fetchedCategoryNames
   ]));
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +60,25 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onClose, onAdd
 
     setLoading(true);
     try {
-      const finalCategory = category === 'NEW' ? (customCategory.trim() || 'Custom Category') : category;
+      let finalCategory = category;
+
+      // PERSISTENT NEW CATEGORY CREATION FLOW
+      if (category === 'NEW') {
+        const trimmedCustom = customCategory.trim() || 'Custom Category';
+        finalCategory = trimmedCustom;
+        try {
+          await createCategoryApi({
+            name: trimmedCustom,
+            code: trimmedCustom.substring(0, 3).toUpperCase(),
+            status: 'Active',
+            vatRate: 13,
+            isDefault: false
+          });
+        } catch (catErr) {
+          console.error('Failed to persist new category:', catErr);
+        }
+      }
+
       let finalImageUrl = '/ecopanel_preview.png';
 
       // Upload Asset File to Backend Subdirectory if selected
@@ -85,6 +113,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onClose, onAdd
       setUploading(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">

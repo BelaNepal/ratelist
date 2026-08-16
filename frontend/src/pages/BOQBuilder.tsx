@@ -21,8 +21,10 @@ import {
   Copy,
   Database,
   ArrowRight,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react';
+
 import { fetchProducts, fetchProjects, createProject, saveBOQ, fetchBOQ } from '../services/api';
 import { Product, Project, BOQItem } from '../types';
 import { useLanguage } from '../context/LanguageContext';
@@ -467,11 +469,20 @@ export const BOQBuilder: React.FC<BOQBuilderProps> = ({ onSavedBOQ }) => {
               <button
                 onClick={handleOpenSaveDialog}
                 disabled={saving}
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                <Save className="h-4 w-4" /> {saving ? 'Saving...' : 'Save BOQ Options'}
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Saving BOQ...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" /> Save Target Group BOQ
+                  </>
+                )}
               </button>
             )}
+
           </div>
         </div>
       </div>
