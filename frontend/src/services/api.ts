@@ -12,7 +12,11 @@ import {
   UserSession
 } from '../types';
 
-const API_BASE = '/api';
+// In production (Vercel), use the full Render backend URL.
+// In local dev, Vite's proxy forwards '/api' to localhost:5000.
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 export async function loginUserApi(email: string, password: string): Promise<{ success: boolean; user?: UserProfile; token?: string; error?: string; message?: string }> {
   const res = await fetch(`${API_BASE}/auth/login`, {
