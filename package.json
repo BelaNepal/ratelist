@@ -1,0 +1,11 @@
+{
+  "name": "bela-rate-and-costing-manager",
+  "version": "1.0.0",
+  "description": "Bela Rate & Costing Manager - Single Source of Truth Pricing & BOQ Engine",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build"
+  }
+}
