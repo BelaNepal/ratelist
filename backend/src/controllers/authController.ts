@@ -75,14 +75,16 @@ export async function login(req: Request, res: Response) {
     await createSession(sessionObj);
     await updateUserLastLogin(user.id);
 
-    // Set secure HTTP-only Cookie
+    // Set secure HTTP-only Cookie with Cross-Site SameSite None support for production
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('bela_session', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });
+
 
     const { password_hash, ...userPayload } = user;
     userPayload.last_login_at = new Date().toISOString();

@@ -18,6 +18,16 @@ const API_BASE: string = import.meta.env.PROD
   ? 'https://ratelist-cd57.onrender.com/api'
   : '/api';
 
+// Helper to attach Authorization Bearer token header for cross-domain cookie-less authentication fallback
+export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = localStorage.getItem('bela_token');
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function loginUserApi(email: string, password: string): Promise<{ success: boolean; user?: UserProfile; token?: string; error?: string; message?: string }> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
@@ -25,12 +35,19 @@ export async function loginUserApi(email: string, password: string): Promise<{ s
     credentials: 'include',
     body: JSON.stringify({ email, password })
   });
-  return res.json();
+  const data = await res.json();
+  if (data.token) {
+    localStorage.setItem('bela_token', data.token);
+  }
+  return data;
 }
 
 export async function logoutUserApi(): Promise<{ success: boolean }> {
+  const tokenHeader = getAuthHeaders();
+  localStorage.removeItem('bela_token');
   const res = await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
+    headers: tokenHeader,
     credentials: 'include'
   });
   return res.json();
@@ -39,6 +56,8 @@ export async function logoutUserApi(): Promise<{ success: boolean }> {
 export async function fetchCurrentUserApi(): Promise<{ authenticated: boolean; user?: UserProfile; error?: string }> {
   try {
     const res = await fetch(`${API_BASE}/auth/me`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
       credentials: 'include'
     });
     if (!res.ok) return { authenticated: false };
@@ -50,6 +69,7 @@ export async function fetchCurrentUserApi(): Promise<{ authenticated: boolean; u
 
 export async function fetchUserSessionsApi(): Promise<{ success: boolean; sessions: UserSession[] }> {
   const res = await fetch(`${API_BASE}/auth/sessions`, {
+    headers: getAuthHeaders(),
     credentials: 'include'
   });
   return res.json();
@@ -57,15 +77,17 @@ export async function fetchUserSessionsApi(): Promise<{ success: boolean; sessio
 
 export async function fetchUsersApi(): Promise<{ success: boolean; users: UserProfile[] }> {
   const res = await fetch(`${API_BASE}/auth/users`, {
+    headers: getAuthHeaders(),
     credentials: 'include'
   });
   return res.json();
 }
 
+
 export async function createUserApi(userData: Partial<UserProfile> & { password?: string }): Promise<{ success: boolean; user?: UserProfile; error?: string }> {
   const res = await fetch(`${API_BASE}/auth/users`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(userData)
   });
@@ -75,7 +97,7 @@ export async function createUserApi(userData: Partial<UserProfile> & { password?
 export async function updateUserRoleApi(userId: string, role: string): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(`${API_BASE}/auth/users/role`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify({ userId, role })
   });
@@ -85,7 +107,7 @@ export async function updateUserRoleApi(userId: string, role: string): Promise<{
 export async function updateUserStatusApi(userId: string, status: 'ACTIVE' | 'INACTIVE'): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(`${API_BASE}/auth/users/status`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify({ userId, status })
   });
@@ -95,12 +117,13 @@ export async function updateUserStatusApi(userId: string, status: 'ACTIVE' | 'IN
 export async function resetUserPasswordApi(userId: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(`${API_BASE}/auth/users/reset-password`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify({ userId, newPassword })
   });
   return res.json();
 }
+
 
 export async function fetchDashboardStats(): Promise<DashboardStats> {
   const res = await fetch(`${API_BASE}/dashboard/stats`);

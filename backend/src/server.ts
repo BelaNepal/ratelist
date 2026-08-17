@@ -62,15 +62,23 @@ import { uploadProductImage } from './middleware/uploadMiddleware';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Support multiple CORS origins (comma-separated in env)
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+// Support multiple CORS origins (comma-separated in env) plus production domains
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://ratelist.belanepal.com.np',
+  'https://belanepal.com.np'
+];
+const envOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
-  .map(o => o.trim());
+  .map(o => o.trim())
+  .filter(Boolean);
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...envOrigins]));
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. server-to-server, curl)
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (e.g. server-to-server, curl) or matching allowed origins
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.belanepal.com.np')) {
       callback(null, true);
     } else {
       callback(new Error(`CORS: Origin ${origin} not allowed`));
@@ -78,6 +86,7 @@ app.use(cors({
   },
   credentials: true
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
